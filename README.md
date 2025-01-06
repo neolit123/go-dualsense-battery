@@ -6,6 +6,7 @@ A small Windows taskbar application, written in Go, for showing the battery leve
 of a PlayStation 5 DualSense controller connected over BlueTooth or USB.
 
 Supports a single controller, the first one in the device list.
+Last tested with controller firmware A-0520 on Windows 11 Pro 64bit 10.0.26100.2605.
 
 ![Screenshot0](./screenshot0.png)
 
@@ -23,7 +24,8 @@ over USB (charging), BlueTooth or if no devices are found.
 
 ## Installing
 
-- Download a binary release somewhere on disk from the `Releases` page.
+- Download a 64bit binary release (`go-dulasense-battery.exe`) somewhere on disk
+from the [Releases](https://github.com/neolit123/go-dualsense-battery/releases) page.
 - Press `Win+R` and type `shell:startup`. This will open the `Startup` folder in Explorer.
 - Create a shortcut of the executable in this folder to start it with Windows.
 
