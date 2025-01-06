@@ -24,7 +24,7 @@ over USB (charging), BlueTooth or if no devices are found.
 
 ## Installing
 
-- Download a 64bit binary release (`go-dulasense-battery.exe`) somewhere on disk
+- Download a 64bit binary release (`go-dualsense-battery.exe`) somewhere on disk
 from the [Releases](https://github.com/neolit123/go-dualsense-battery/releases) page.
 - Press `Win+R` and type `shell:startup`. This will open the `Startup` folder in Explorer.
 - Create a shortcut of the executable in this folder to start it with Windows.
