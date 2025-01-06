@@ -1,3 +1,4 @@
 *.syso
 *.exe
+*.sha256
 _work
