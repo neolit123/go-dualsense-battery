@@ -81,22 +81,16 @@ var (
 	pAllocConsole  = k32.NewProc("AllocConsole")
 	pFreeConsole   = k32.NewProc("FreeConsole")
 
-	flagConsole bool
+	consoleEnabled bool
 )
 
 // https://stackoverflow.com/questions/23743217/printing-output-to-a-command-window-when-golang-application-is-compiled-with-ld
-func attachConsole() bool {
-	var allocated = false
-
+func attachConsole() {
 	// Attach a console to the process. Allocate it if needed first.
 	r0, _, _ := pAttachConsole.Call(uintptr(attachParentProcess))
 	if r0 == 0 {
-		r0, _, _ := pAllocConsole.Call()
-		if r0 != 0 {
-			allocated = true
-		}
+		_, _, _ = pAllocConsole.Call()
 	}
-
 	// Redirect the standard streams.
 	hout, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
 	if err == nil {
@@ -106,26 +100,16 @@ func attachConsole() bool {
 	if err == nil {
 		os.Stderr = os.NewFile(uintptr(herr), "/dev/stderr")
 	}
-
-	return allocated
 }
 
 func main() {
-	flag.BoolVar(&flagConsole, "console", false, "Attach a debug console to the program.")
+	flag.BoolVar(&consoleEnabled, "console", false, "Attach a debug console to the program.")
 	flag.Parse()
-
-	if flagConsole {
-		if freeConsole := attachConsole(); freeConsole {
-			defer pFreeConsole.Call()
-		}
-	}
-
-	log.SetFlags(log.LstdFlags)
-	log.SetOutput(os.Stdout)
-	fmt.Fprintln(os.Stdout, "")
 
 	onExit := func() {}
 	systray.Run(onReady, onExit)
+
+	pFreeConsole.Call()
 }
 
 func onReady() {
@@ -135,7 +119,19 @@ func onReady() {
 	menuItemAppName := systray.AddMenuItem(fmt.Sprintf("%s %s", appName, version), "")
 	menuItemAppName.Disable()
 
-	menuItemExit := systray.AddMenuItem("Exit", "Exit")
+	systray.AddSeparator()
+
+	menuItemDebugConsole := systray.AddMenuItem("", "")
+	toggleConsole(menuItemDebugConsole)
+	go func() {
+		for {
+			<-menuItemDebugConsole.ClickedCh
+			consoleEnabled = !consoleEnabled
+			toggleConsole(menuItemDebugConsole)
+		}
+	}()
+
+	menuItemExit := systray.AddMenuItem("Exit", "")
 	go func() {
 		<-menuItemExit.ClickedCh
 		hid.Exit()
@@ -148,105 +144,128 @@ func onReady() {
 		systray.Quit()
 	}
 
-open:
-	time.Sleep(1 * time.Second)
+	log.SetFlags(log.LstdFlags)
+	fmt.Fprintln(os.Stdout, "")
 
-	log.Println("Opening controller device...")
+	proc()
+}
 
-	time.Sleep(1 * time.Second)
+func proc() {
+	for {
+		time.Sleep(1 * time.Second)
 
-	d, err := hid.OpenFirst(vendorID, productId)
-	if err != nil {
-		setStatus(fmt.Sprintf("OpenFirst error: %v", err.Error()))
-		systray.SetIcon(notConnected)
-		goto open
-	}
+		log.Println("Opening controller device...")
 
-	log.Println("Reading device info...")
-
-	time.Sleep(1 * time.Second)
-
-	info, err := d.GetDeviceInfo()
-	if err != nil {
-		setStatus(fmt.Sprintf("GetDeviceInfo error: %v", err.Error()))
-		systray.SetIcon(notConnected)
-		_ = d.Close()
-		goto open
-	}
-
-	var offset int
-	var sz int
-	switch info.BusType {
-	case hid.BusUSB:
-		offset = offsetBatteryUSB
-		sz = 64
-	case hid.BusBluetooth:
-		offset = offsetBatteryBT
-		sz = 78
-	default:
-		setStatus(fmt.Sprintf("error: unsupported BusType: %s", info.BusType))
-		systray.SetIcon(notConnected)
-		_ = d.Close()
-		goto open
-	}
-
-	err = d.SetNonblock(true)
-	if err != nil {
-		setStatus(fmt.Sprintf("SetNonblock error: %v", err.Error()))
-		_ = d.Close()
-		goto open
-	}
-
-	b := make([]byte, sz)
-
-	log.Printf("Reading status (%d bytes)...", sz)
-
-	_, err = d.Read(b)
-	if err != nil {
-		setStatus(fmt.Sprintf("Read error: %v", err.Error()))
-		systray.SetIcon(notConnected)
-		_ = d.Close()
-		goto open
-	}
-
-	// Offsets and calculation referenced from:
-	// https://controllers.fandom.com/wiki/Sony_DualSense
-	battery0 := b[offset] & battery0Mask
-	log.Printf("Read battery0 value of: %x", battery0)
-
-	percent, iconIndex := battery0ToPercentAndIndex(battery0)
-	setStatus(fmt.Sprintf("Connection: %s, Battery: %d%%", info.BusType, percent))
-
-	if info.BusType == hid.BusUSB {
-		systray.SetIcon(charging[iconIndex])
-	} else {
-		systray.SetIcon(notCharging[iconIndex])
-	}
-
-	// If battery0 is zero and connection is over bluetooth, naively assume this might
-	// be a powered down, partial report. Thus send the wake-up byte for 'Get Calibration'.
-	// https://controllers.fandom.com/wiki/Sony_DualSense
-	if info.BusType == hid.BusBluetooth && battery0 == 0 {
-		log.Printf("Writing BlueTooth wake-up byte %x...", wakeupByte)
-		for i := range b {
-			b[i] = 0
-		}
-		b[0] = wakeupByte
-		_, err = d.SendFeatureReport(b)
+		d, err := hid.OpenFirst(vendorID, productId)
 		if err != nil {
-			setStatus(fmt.Sprintf("Write error: %v", err.Error()))
-			_ = d.Close()
-			goto open
+			setStatus(fmt.Sprintf("OpenFirst error: %v", err.Error()))
+			systray.SetIcon(notConnected)
+			continue
 		}
-	}
 
-	_ = d.Close()
-	goto open
+		log.Println("Reading device info...")
+
+		time.Sleep(1 * time.Second)
+
+		info, err := d.GetDeviceInfo()
+		if err != nil {
+			setStatus(fmt.Sprintf("GetDeviceInfo error: %v", err.Error()))
+			systray.SetIcon(notConnected)
+			_ = d.Close()
+			continue
+		}
+
+		var offset int
+		var sz int
+		switch info.BusType {
+		case hid.BusUSB:
+			offset = offsetBatteryUSB
+			sz = 64
+		case hid.BusBluetooth:
+			offset = offsetBatteryBT
+			sz = 78
+		default:
+			setStatus(fmt.Sprintf("error: unsupported BusType: %s", info.BusType))
+			systray.SetIcon(notConnected)
+			_ = d.Close()
+			continue
+		}
+
+		err = d.SetNonblock(true)
+		if err != nil {
+			setStatus(fmt.Sprintf("SetNonblock error: %v", err.Error()))
+			_ = d.Close()
+			continue
+		}
+
+		b := make([]byte, sz)
+
+	read:
+		log.Printf("Reading status (%d bytes)...", sz)
+
+		_, err = d.Read(b)
+		if err != nil {
+			setStatus(fmt.Sprintf("Read error: %v", err.Error()))
+			systray.SetIcon(notConnected)
+			_ = d.Close()
+			continue
+		}
+
+		// Offsets and calculation referenced from:
+		// https://controllers.fandom.com/wiki/Sony_DualSense
+		battery0 := b[offset] & battery0Mask
+		log.Printf("Read battery0 value of: %x", battery0)
+
+		percent, iconIndex := battery0ToPercentAndIndex(battery0)
+		setStatus(fmt.Sprintf("Connection: %s, Battery: %d%%", info.BusType, percent))
+
+		if info.BusType == hid.BusUSB {
+			systray.SetIcon(charging[iconIndex])
+		} else {
+			systray.SetIcon(notCharging[iconIndex])
+		}
+
+		// If battery0 is zero and connection is over bluetooth, naively assume this might
+		// be a powered down, partial report. Thus send the wake-up byte for 'Get Calibration'.
+		// https://controllers.fandom.com/wiki/Sony_DualSense
+		if info.BusType == hid.BusBluetooth && battery0 == 0 {
+			log.Printf("Writing Bluetooth wake-up byte %x...", wakeupByte)
+			for i := range b {
+				b[i] = 0
+			}
+			b[0] = wakeupByte
+			_, err = d.SendFeatureReport(b)
+			if err != nil {
+				setStatus(fmt.Sprintf("Write error: %v", err.Error()))
+				_ = d.Close()
+				continue
+			}
+			time.Sleep(1 * time.Second)
+			goto read
+		}
+
+		_ = d.Close()
+	}
 }
 
 func setStatus(status string) {
 	log.Println(status)
 	systray.SetTooltip(status)
+}
+
+func toggleConsole(mi *systray.MenuItem) {
+	const (
+		consoleMenuItemTextShow = "Show debug console"
+		consoleMenuItemTextHide = "Hide debug console"
+	)
+	if consoleEnabled {
+		attachConsole()
+		log.SetOutput(os.Stdout)
+		mi.SetTitle(consoleMenuItemTextHide)
+	} else {
+		pFreeConsole.Call()
+		mi.SetTitle(consoleMenuItemTextShow)
+	}
 }
 
 // battery0 has the range of 0 - 0x0A, so 10 values.
