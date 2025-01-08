@@ -21,12 +21,13 @@ import (
 const (
 	appName = "go-dualsense-battery"
 
-	vendorID  = 0x054C
-	productId = 0x0CE6
-
+	// https://controllers.fandom.com/wiki/Sony_DualSense
+	vendorID         = 0x054C
+	productId        = 0x0CE6
 	offsetBatteryUSB = 53
 	offsetBatteryBT  = 54
-	battery0Mask     = 0xf
+	battery0Mask     = 0x0A
+	wakeupByte       = 0x05
 
 	attachParentProcess = ^uint32(0) // ATTACH_PARENT_PROCESS (DWORD)-1
 )
@@ -174,11 +175,14 @@ open:
 	}
 
 	var offset int
+	var sz int
 	switch info.BusType {
 	case hid.BusUSB:
 		offset = offsetBatteryUSB
+		sz = 64
 	case hid.BusBluetooth:
 		offset = offsetBatteryBT
+		sz = 78
 	default:
 		setStatus(fmt.Sprintf("error: unsupported BusType: %s", info.BusType))
 		systray.SetIcon(notConnected)
@@ -193,9 +197,10 @@ open:
 		goto open
 	}
 
-	log.Println("Reading status...")
+	b := make([]byte, sz)
 
-	b := make([]byte, 128)
+	log.Printf("Reading status (%d bytes)...", sz)
+
 	_, err = d.Read(b)
 	if err != nil {
 		setStatus(fmt.Sprintf("Read error: %v", err.Error()))
@@ -205,11 +210,11 @@ open:
 	}
 
 	// Offsets and calculation referenced from:
-	// - https://github.com/Ohjurot/DualSense-Windows
+	// https://controllers.fandom.com/wiki/Sony_DualSense
 	battery0 := b[offset] & battery0Mask
 	log.Printf("Read battery0 value of: %x", battery0)
-	percent, iconIndex := battery0ToPercentAndIndex(battery0)
 
+	percent, iconIndex := battery0ToPercentAndIndex(battery0)
 	setStatus(fmt.Sprintf("Connection: %s, Battery: %d%%", info.BusType, percent))
 
 	if info.BusType == hid.BusUSB {
@@ -218,7 +223,23 @@ open:
 		systray.SetIcon(notCharging[iconIndex])
 	}
 
-	time.Sleep(time.Second * 1)
+	// If battery0 is zero and connection is over bluetooth, naively assume this might
+	// be a powered down, partial report. Thus send the wake-up byte for 'Get Calibration'.
+	// https://controllers.fandom.com/wiki/Sony_DualSense
+	if info.BusType == hid.BusBluetooth && battery0 == 0 {
+		log.Printf("Writing BlueTooth wake-up byte %x...", wakeupByte)
+		for i := range b {
+			b[i] = 0
+		}
+		b[0] = wakeupByte
+		_, err = d.SendFeatureReport(b)
+		if err != nil {
+			setStatus(fmt.Sprintf("Write error: %v", err.Error()))
+			_ = d.Close()
+			goto open
+		}
+	}
+
 	_ = d.Close()
 	goto open
 }
@@ -228,12 +249,12 @@ func setStatus(status string) {
 	systray.SetTooltip(status)
 }
 
-// battery0 has the range of 0 - 0x0f, so 16 values.
+// battery0 has the range of 0 - 0x0A, so 10 values.
 // Map that to percentage and icon index.
-// The 101.0 trick for nIcons avoids branching to fit the
-// iconIndex in len(charging)-1, when percent == 100.0.
+// The 101.0 trick for nIcons avoids branching and fits the
+// 100 percents in iconIndex equal to len(icons)-1.
 func battery0ToPercentAndIndex(battery0 byte) (int, int) {
-	percent := float64(battery0) / float64(battery0Mask) * 100.0
+	percent := float64(battery0) * 10.0
 	nIcons := 101.0 / float64(len(charging))
 	iconIndex := math.Floor(percent / nIcons)
 	return int(percent), int(iconIndex)

@@ -8,20 +8,15 @@ import "testing"
 func TestBattery0ToPercentAndIndex(t *testing.T) {
 	expected := [][]int{
 		{0, 0},
-		{6, 0},
-		{13, 0},
+		{10, 0},
 		{20, 0},
-		{26, 1},
-		{33, 1},
+		{30, 1},
 		{40, 1},
-		{46, 2},
-		{53, 2},
+		{50, 2},
 		{60, 2},
-		{66, 3},
-		{73, 3},
+		{70, 3},
 		{80, 3},
-		{86, 4},
-		{93, 4},
+		{90, 4},
 		{100, 4},
 	}
 
@@ -32,7 +27,7 @@ func TestBattery0ToPercentAndIndex(t *testing.T) {
 			t.Errorf("expected p: %d, got: %d", expected[i][0], p)
 		}
 		if idx != expected[i][1] {
-			t.Errorf("expected idx: %d, got: %d", expected[1][0], idx)
+			t.Errorf("expected idx: %d, got: %d", expected[i][1], idx)
 		}
 	}
 }
