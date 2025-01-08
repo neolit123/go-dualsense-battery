@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"fmt"
 	"math"
+	"os"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -73,6 +74,11 @@ func main() {
 	systray.Run(onReady, onExit)
 }
 
+func setStatus(status string) {
+	fmt.Fprintln(os.Stdout, status)
+	systray.SetTooltip(status)
+}
+
 func onReady() {
 	systray.SetIcon(notConnected)
 	systray.SetTitle(appName)
@@ -88,7 +94,7 @@ func onReady() {
 	}()
 
 	if err := hid.Init(); err != nil {
-		systray.SetTooltip(fmt.Sprintf("Init error: %v", err.Error()))
+		setStatus(fmt.Sprintf("Init error: %v", err.Error()))
 		time.Sleep(2 * time.Second)
 		systray.Quit()
 	}
@@ -96,24 +102,24 @@ func onReady() {
 open:
 	time.Sleep(1 * time.Second)
 
-	systray.SetTooltip("Searching for controller...")
+	setStatus("Searching for controller...")
 
 	time.Sleep(1 * time.Second)
 
 	d, err := hid.OpenFirst(vendorID, productId)
 	if err != nil {
-		systray.SetTooltip(fmt.Sprintf("OpenFirst error: %v", err.Error()))
+		setStatus(fmt.Sprintf("OpenFirst error: %v", err.Error()))
 		systray.SetIcon(notConnected)
 		goto open
 	}
 
-	systray.SetTooltip("Reading device info...")
+	setStatus("Reading device info...")
 
 	time.Sleep(1 * time.Second)
 
 	info, err := d.GetDeviceInfo()
 	if err != nil {
-		systray.SetTooltip(fmt.Sprintf("GetDeviceInfo error: %v", err.Error()))
+		setStatus(fmt.Sprintf("GetDeviceInfo error: %v", err.Error()))
 		systray.SetIcon(notConnected)
 		_ = d.Close()
 		goto open
@@ -126,7 +132,7 @@ open:
 	case hid.BusBluetooth:
 		offset = offsetBatteryBT
 	default:
-		systray.SetTooltip(fmt.Sprintf("error: unsupported BusType: %s", info.BusType))
+		setStatus(fmt.Sprintf("error: unsupported BusType: %s", info.BusType))
 		systray.SetIcon(notConnected)
 		_ = d.Close()
 		goto open
@@ -134,19 +140,19 @@ open:
 
 	err = d.SetNonblock(true)
 	if err != nil {
-		systray.SetTooltip(fmt.Sprintf("SetNonblock error: %v", err.Error()))
+		setStatus(fmt.Sprintf("SetNonblock error: %v", err.Error()))
 		_ = d.Close()
 		goto open
 	}
 
-	systray.SetTooltip("Reading status...")
+	setStatus("Reading status...")
 
 	time.Sleep(1 * time.Second)
 
 	b := make([]byte, 128)
 	_, err = d.Read(b)
 	if err != nil {
-		systray.SetTooltip(fmt.Sprintf("Read error: %v", err.Error()))
+		setStatus(fmt.Sprintf("Read error: %v", err.Error()))
 		systray.SetIcon(notConnected)
 		_ = d.Close()
 		goto open
@@ -158,7 +164,7 @@ open:
 	percent := (float64(battery0) / 8.0) * 100.0
 	iconIndex := int(math.Round(percent/20)) - 1
 
-	systray.SetTooltip(fmt.Sprintf("Connection: %s, Battery: %.0f%%", info.BusType, percent))
+	setStatus(fmt.Sprintf("Connection: %s, Battery: %.0f%%", info.BusType, percent))
 
 	if info.BusType == hid.BusUSB {
 		systray.SetIcon(charging[iconIndex])
