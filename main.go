@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright 2025 the go-dualsense-battery contributors
+// Copyright 2025 the go-dualsense-battery authors
 
 package main
 
 import (
 	_ "embed"
+	"flag"
 	"fmt"
+	"log"
 	"math"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/getlantern/systray"
 	"github.com/sstallion/go-hid"
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -22,6 +26,9 @@ const (
 
 	offsetBatteryUSB = 53
 	offsetBatteryBT  = 54
+	battery0Mask     = 0xf
+
+	attachParentProcess = ^uint32(0) // ATTACH_PARENT_PROCESS (DWORD)-1
 )
 
 var (
@@ -67,16 +74,57 @@ var (
 		notCharging3,
 		notCharging4,
 	}
+
+	k32            = windows.NewLazyDLL("kernel32.dll")
+	pAttachConsole = k32.NewProc("AttachConsole")
+	pAllocConsole  = k32.NewProc("AllocConsole")
+	pFreeConsole   = k32.NewProc("FreeConsole")
+
+	flagConsole bool
 )
 
-func main() {
-	onExit := func() {}
-	systray.Run(onReady, onExit)
+// https://stackoverflow.com/questions/23743217/printing-output-to-a-command-window-when-golang-application-is-compiled-with-ld
+func attachConsole() bool {
+	var allocated = false
+
+	// Attach a console to the process. Allocate it if needed first.
+	r0, _, _ := pAttachConsole.Call(uintptr(attachParentProcess))
+	if r0 == 0 {
+		r0, _, _ := pAllocConsole.Call()
+		if r0 != 0 {
+			allocated = true
+		}
+	}
+
+	// Redirect the standard streams.
+	hout, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
+	if err == nil {
+		os.Stdout = os.NewFile(uintptr(hout), "/dev/stdout")
+	}
+	herr, err := syscall.GetStdHandle(syscall.STD_ERROR_HANDLE)
+	if err == nil {
+		os.Stderr = os.NewFile(uintptr(herr), "/dev/stderr")
+	}
+
+	return allocated
 }
 
-func setStatus(status string) {
-	fmt.Fprintln(os.Stdout, status)
-	systray.SetTooltip(status)
+func main() {
+	flag.BoolVar(&flagConsole, "console", false, "Attach a debug console to the program.")
+	flag.Parse()
+
+	if flagConsole {
+		if freeConsole := attachConsole(); freeConsole {
+			defer pFreeConsole.Call()
+		}
+	}
+
+	log.SetFlags(log.LstdFlags)
+	log.SetOutput(os.Stdout)
+	fmt.Fprintln(os.Stdout, "")
+
+	onExit := func() {}
+	systray.Run(onReady, onExit)
 }
 
 func onReady() {
@@ -94,7 +142,7 @@ func onReady() {
 	}()
 
 	if err := hid.Init(); err != nil {
-		setStatus(fmt.Sprintf("Init error: %v", err.Error()))
+		setStatus(fmt.Sprintf("hid.Init error: %v", err.Error()))
 		time.Sleep(2 * time.Second)
 		systray.Quit()
 	}
@@ -102,7 +150,7 @@ func onReady() {
 open:
 	time.Sleep(1 * time.Second)
 
-	setStatus("Searching for controller...")
+	log.Println("Opening controller device...")
 
 	time.Sleep(1 * time.Second)
 
@@ -113,7 +161,7 @@ open:
 		goto open
 	}
 
-	setStatus("Reading device info...")
+	log.Println("Reading device info...")
 
 	time.Sleep(1 * time.Second)
 
@@ -145,9 +193,7 @@ open:
 		goto open
 	}
 
-	setStatus("Reading status...")
-
-	time.Sleep(1 * time.Second)
+	log.Println("Reading status...")
 
 	b := make([]byte, 128)
 	_, err = d.Read(b)
@@ -160,11 +206,11 @@ open:
 
 	// Offsets and calculation referenced from:
 	// - https://github.com/Ohjurot/DualSense-Windows
-	battery0 := b[offset] & 0xf
-	percent := (float64(battery0) / 8.0) * 100.0
-	iconIndex := int(math.Round(percent/20)) - 1
+	battery0 := b[offset] & battery0Mask
+	log.Printf("Read battery0 value of: %x", battery0)
+	percent, iconIndex := battery0ToPercentAndIndex(battery0)
 
-	setStatus(fmt.Sprintf("Connection: %s, Battery: %.0f%%", info.BusType, percent))
+	setStatus(fmt.Sprintf("Connection: %s, Battery: %d%%", info.BusType, percent))
 
 	if info.BusType == hid.BusUSB {
 		systray.SetIcon(charging[iconIndex])
@@ -175,4 +221,20 @@ open:
 	time.Sleep(time.Second * 1)
 	_ = d.Close()
 	goto open
+}
+
+func setStatus(status string) {
+	log.Println(status)
+	systray.SetTooltip(status)
+}
+
+// battery0 has the range of 0 - 0x0f, so 16 values.
+// Map that to percentage and icon index.
+// The 101.0 trick for nIcons avoids branching to fit the
+// iconIndex in len(charging)-1, when percent == 100.0.
+func battery0ToPercentAndIndex(battery0 byte) (int, int) {
+	percent := float64(battery0) / float64(battery0Mask) * 100.0
+	nIcons := 101.0 / float64(len(charging))
+	iconIndex := math.Floor(percent / nIcons)
+	return int(percent), int(iconIndex)
 }

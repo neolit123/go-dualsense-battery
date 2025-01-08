@@ -1,5 +1,8 @@
 @echo off
 
+echo running tests...
+go test -v ./
+
 echo enabling CGO...
 set OLD_CGO_ENABLED=%CGO_ENABLED%
 set CGO_ENABLED=1
