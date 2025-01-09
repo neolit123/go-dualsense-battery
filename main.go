@@ -30,6 +30,8 @@ const (
 	batteryLevels     = 0x0A + 1
 	btReportTruncated = 0x01
 	calibrationFR     = 0x05
+	bufferSizeBT      = 78
+	bufferSizeUSB     = 64
 
 	attachParentProcess = ^uint32(0) // ATTACH_PARENT_PROCESS (DWORD)-1
 )
@@ -194,10 +196,10 @@ func proc() {
 		switch info.BusType {
 		case hid.BusUSB:
 			offset = offsetBatteryUSB
-			sz = 64
+			sz = bufferSizeUSB
 		case hid.BusBluetooth:
 			offset = offsetBatteryBT
-			sz = 78
+			sz = bufferSizeBT
 		default:
 			setStatus(fmt.Sprintf("error: unsupported BusType: %s", info.BusType))
 			systray.SetIcon(notConnected)
@@ -214,7 +216,7 @@ func proc() {
 
 		b := make([]byte, sz)
 
-		log.Printf("Reading status (%d bytes)...", sz)
+		log.Printf("Reading input report (%d bytes)...", sz)
 
 		sz, err = d.Read(b)
 		if err != nil {
@@ -237,16 +239,19 @@ func proc() {
 		// https://controllers.fandom.com/wiki/Sony_DualSense
 		if info.BusType == hid.BusBluetooth && b[0] == btReportTruncated {
 			log.Print("Requesting calibration to wake up the BT device...")
+
 			for i := range b {
 				b[i] = 0
 			}
 			b[0] = calibrationFR
-			_, err = d.SendFeatureReport(b)
+
+			_, err = d.GetFeatureReport(b)
 			if err != nil {
 				setStatus(fmt.Sprintf("Write error: %v", err.Error()))
 				_ = d.Close()
 				continue
 			}
+
 			time.Sleep(1 * time.Second)
 			continue
 		}
