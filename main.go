@@ -22,13 +22,14 @@ const (
 	appName = "go-dualsense-battery"
 
 	// https://controllers.fandom.com/wiki/Sony_DualSense
-	vendorID         = 0x054C
-	productId        = 0x0CE6
-	offsetBatteryUSB = 53
-	offsetBatteryBT  = 54
-	battery0Mask     = 0x0F
-	batteryLevels    = 0x0A + 1
-	wakeupByte       = 0x05
+	vendorID          = 0x054C
+	productId         = 0x0CE6
+	offsetBatteryUSB  = 53
+	offsetBatteryBT   = 54
+	battery0Mask      = 0x0F
+	batteryLevels     = 0x0A + 1
+	btReportTruncated = 0x01
+	calibrationFR     = 0x05
 
 	attachParentProcess = ^uint32(0) // ATTACH_PARENT_PROCESS (DWORD)-1
 )
@@ -213,14 +214,40 @@ func proc() {
 
 		b := make([]byte, sz)
 
-	read:
 		log.Printf("Reading status (%d bytes)...", sz)
 
-		_, err = d.Read(b)
+		sz, err = d.Read(b)
 		if err != nil {
 			setStatus(fmt.Sprintf("Read error: %v", err.Error()))
 			systray.SetIcon(notConnected)
 			_ = d.Close()
+			continue
+		}
+		if sz == 0 {
+			setStatus("Error: Received a buffer of size 0")
+			systray.SetIcon(notConnected)
+			_ = d.Close()
+			continue
+		}
+
+		log.Printf("Received an input report with first byte: %x", b[0])
+
+		// Sending a calibration report (using calibrationFR) is required to switch BT input
+		// reports from the truncated report to the expanded report.
+		// https://controllers.fandom.com/wiki/Sony_DualSense
+		if info.BusType == hid.BusBluetooth && b[0] == btReportTruncated {
+			log.Print("Requesting calibration to wake up the BT device...")
+			for i := range b {
+				b[i] = 0
+			}
+			b[0] = calibrationFR
+			_, err = d.SendFeatureReport(b)
+			if err != nil {
+				setStatus(fmt.Sprintf("Write error: %v", err.Error()))
+				_ = d.Close()
+				continue
+			}
+			time.Sleep(1 * time.Second)
 			continue
 		}
 
@@ -236,25 +263,6 @@ func proc() {
 			systray.SetIcon(charging[iconIndex])
 		} else {
 			systray.SetIcon(notCharging[iconIndex])
-		}
-
-		// If battery0 is zero and connection is over bluetooth, naively assume this might
-		// be a powered down, partial report. Thus send the wake-up byte for 'Get Calibration'.
-		// https://controllers.fandom.com/wiki/Sony_DualSense
-		if info.BusType == hid.BusBluetooth && battery0 == 0 {
-			log.Printf("Writing Bluetooth wake-up byte %x...", wakeupByte)
-			for i := range b {
-				b[i] = 0
-			}
-			b[0] = wakeupByte
-			_, err = d.SendFeatureReport(b)
-			if err != nil {
-				setStatus(fmt.Sprintf("Write error: %v", err.Error()))
-				_ = d.Close()
-				continue
-			}
-			time.Sleep(1 * time.Second)
-			goto read
 		}
 
 		_ = d.Close()
