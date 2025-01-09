@@ -9,25 +9,29 @@ func TestBattery0ToPercentAndIndex(t *testing.T) {
 	expected := [][]int{
 		{0, 0},
 		{10, 0},
-		{20, 0},
-		{30, 1},
-		{40, 1},
-		{50, 2},
-		{60, 2},
-		{70, 3},
-		{80, 3},
-		{90, 4},
-		{100, 4},
+		{20, 1},
+		{30, 2},
+		{40, 2},
+		{50, 3},
+		{60, 4},
+		{70, 4},
+		{80, 5},
+		{90, 6},
+		{100, 6},
 	}
 
-	for i := 0; i < battery0Mask+1; i++ {
+	if len(expected) != batteryLevels {
+		t.Fatalf("expected must have %d elements", batteryLevels)
+	}
+
+	for i := 0; i < batteryLevels; i++ {
 		b0 := byte(i)
 		p, idx := battery0ToPercentAndIndex(b0)
 		if p != expected[i][0] {
-			t.Errorf("expected p: %d, got: %d", expected[i][0], p)
+			t.Errorf("%d: expected p: %d, got: %d", i, expected[i][0], p)
 		}
 		if idx != expected[i][1] {
-			t.Errorf("expected idx: %d, got: %d", expected[i][1], idx)
+			t.Errorf("%d: expected idx: %d, got: %d", i, expected[i][1], idx)
 		}
 	}
 }

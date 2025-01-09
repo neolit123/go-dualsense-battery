@@ -26,7 +26,8 @@ const (
 	productId        = 0x0CE6
 	offsetBatteryUSB = 53
 	offsetBatteryBT  = 54
-	battery0Mask     = 0x0A
+	battery0Mask     = 0x0F
+	batteryLevels    = 0x0A + 1
 	wakeupByte       = 0x05
 
 	attachParentProcess = ^uint32(0) // ATTACH_PARENT_PROCESS (DWORD)-1
@@ -48,6 +49,10 @@ var (
 	charging3 []byte
 	//go:embed assets/charging_4.ico
 	charging4 []byte
+	//go:embed assets/charging_5.ico
+	charging5 []byte
+	//go:embed assets/charging_6.ico
+	charging6 []byte
 
 	//go:embed assets/not_charging_0.ico
 	notCharging0 []byte
@@ -59,6 +64,10 @@ var (
 	notCharging3 []byte
 	//go:embed assets/not_charging_4.ico
 	notCharging4 []byte
+	//go:embed assets/not_charging_5.ico
+	notCharging5 []byte
+	//go:embed assets/not_charging_6.ico
+	notCharging6 []byte
 
 	charging [][]byte = [][]byte{
 		charging0,
@@ -66,6 +75,8 @@ var (
 		charging2,
 		charging3,
 		charging4,
+		charging5,
+		charging6,
 	}
 
 	notCharging [][]byte = [][]byte{
@@ -74,6 +85,8 @@ var (
 		notCharging2,
 		notCharging3,
 		notCharging4,
+		notCharging5,
+		notCharging6,
 	}
 
 	k32            = windows.NewLazyDLL("kernel32.dll")
@@ -268,12 +281,13 @@ func toggleConsole(mi *systray.MenuItem) {
 	}
 }
 
-// battery0 has the range of 0 - 0x0A, so 10 values.
+// https://controllers.fandom.com/wiki/Sony_DualSense
+// battery0 has the range of 0 - 0x0A, so 11 values.
 // Map that to percentage and icon index.
 // The 101.0 trick for nIcons avoids branching and fits the
 // 100 percents in iconIndex equal to len(icons)-1.
 func battery0ToPercentAndIndex(battery0 byte) (int, int) {
-	percent := float64(battery0) * 10.0
+	percent := float64(battery0) * (100.0 / (batteryLevels - 1))
 	nIcons := 101.0 / float64(len(charging))
 	iconIndex := math.Floor(percent / nIcons)
 	return int(percent), int(iconIndex)
