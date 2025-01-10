@@ -44,7 +44,10 @@ const (
 	stateAbnormalTemperature = 0x0B
 	stateChargingError       = 0x0F
 
-	attachParentProcess = ^uint32(0) // ATTACH_PARENT_PROCESS (DWORD)-1
+	attachParentProcess = ^uint32(0)          // ATTACH_PARENT_PROCESS
+	scClose             = uint32(0xF060)      // SC_CLOSE
+	mfCommand           = uint32(0x000000000) // MF_BYCOMMAND
+	mfGrayed            = uint32(0x000000001) // MF_GRAYED
 )
 
 var (
@@ -103,10 +106,15 @@ var (
 		notCharging6,
 	}
 
-	k32            = windows.NewLazyDLL("kernel32.dll")
-	pAttachConsole = k32.NewProc("AttachConsole")
-	pAllocConsole  = k32.NewProc("AllocConsole")
-	pFreeConsole   = k32.NewProc("FreeConsole")
+	k32               = windows.NewLazyDLL("kernel32.dll")
+	pAttachConsole    = k32.NewProc("AttachConsole")
+	pAllocConsole     = k32.NewProc("AllocConsole")
+	pFreeConsole      = k32.NewProc("FreeConsole")
+	pGetConsoleWindow = k32.NewProc("GetConsoleWindow")
+
+	u32             = windows.NewLazyDLL("user32.dll")
+	pGetSystemMenu  = u32.NewProc("GetSystemMenu")
+	pEnableMenuItem = u32.NewProc("EnableMenuItem")
 
 	consoleEnabled bool
 )
@@ -159,13 +167,26 @@ func onReady() {
 	proc()
 }
 
-// https://stackoverflow.com/questions/23743217/printing-output-to-a-command-window-when-golang-application-is-compiled-with-ld
+// https://stackoverflow.com/a/39443208
+// https://stackoverflow.com/a/6054593
 func attachConsole() {
-	// Attach a console to the process. Allocate it if needed first.
+	// Attach a console to the process. Allocate it if needed.
 	r0, _, _ := pAttachConsole.Call(uintptr(attachParentProcess))
 	if r0 == 0 {
-		_, _, _ = pAllocConsole.Call()
+		r0, _, _ = pAllocConsole.Call()
+		if r0 != 0 {
+			// If a console window is allocated, disable the close button.
+			// https://stackoverflow.com/a/22698233
+			r0, _, _ = pGetConsoleWindow.Call()
+			if r0 != 0 {
+				r0, _, _ = pGetSystemMenu.Call(r0, uintptr(0))
+				if r0 != 0 {
+					_, _, _ = pEnableMenuItem.Call(r0, uintptr(scClose), uintptr(mfCommand|mfGrayed))
+				}
+			}
+		}
 	}
+
 	// Redirect the standard streams.
 	hout, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
 	if err == nil {
