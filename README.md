@@ -67,3 +67,4 @@ reading of device status:
 - https://github.com/Ohjurot/DualSense-Windows
 - https://github.com/filipmachalowski/TraySense
 - https://github.com/nondebug/dualsense
+- https://controllers.fandom.com/wiki/Sony_DualSense
