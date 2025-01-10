@@ -18,9 +18,9 @@ Last tested with controller firmware A-0520 on Windows 11 Pro 64bit 10.0.26100.2
 and reads its status and battery level.
 - It shows different battery level icons depending if it's being connected
 over USB (charging), BlueTooth or if no devices are found.
-- It prints what it's doing as a tooltip over the taskbar icon.
 - It consumes a couple of MB of RAM and a tiny amount of CPU cycles.
 - You can right click and `Exit` at any time.
+- You can right click and attach a debug console for more detailed output.
 
 ## Installing
 
@@ -28,6 +28,11 @@ over USB (charging), BlueTooth or if no devices are found.
 from the [Releases](https://github.com/neolit123/go-dualsense-battery/releases) page.
 - Press `Win+R` and type `shell:startup`. This will open the `Startup` folder in Explorer.
 - Create a shortcut of the executable in this folder to start it with Windows.
+
+## Known issues
+
+This Go bug manifests on rare occasions:
+https://github.com/golang/go/issues/13672
 
 ## Dependencies
 
@@ -49,6 +54,8 @@ For generating a resource file and adding an application icon.
   - Gets the application version from a `git` tag.
   - Generates resources with `go-winres`.
   - Builds a Windows GUI application.
+- To covert the icons from PNG to ICO, you'd need `go-png2ico` or a similar tool.
+Check `/artwork` to see how its done.
 
 ## License
 
