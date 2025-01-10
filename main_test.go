@@ -5,7 +5,7 @@ package main
 
 import "testing"
 
-func TestBattery0ToPercentAndIndex(t *testing.T) {
+func TestPowerLevelToPercentAndIndex(t *testing.T) {
 	expected := [][]int{
 		{0, 0},
 		{10, 0},
@@ -20,13 +20,14 @@ func TestBattery0ToPercentAndIndex(t *testing.T) {
 		{100, 6},
 	}
 
-	if len(expected) != batteryLevels {
-		t.Fatalf("expected must have %d elements", batteryLevels)
+	maxPowerLevel1 := maxPowerLevel + 1
+	if len(expected) != maxPowerLevel1 {
+		t.Fatalf("expected must have %d elements", maxPowerLevel1)
 	}
 
-	for i := 0; i < batteryLevels; i++ {
+	for i := 0; i < maxPowerLevel1; i++ {
 		b0 := byte(i)
-		p, idx := battery0ToPercentAndIndex(b0)
+		p, idx := powerLevelToPercentAndIndex(b0)
 		if p != expected[i][0] {
 			t.Errorf("%d: expected p: %d, got: %d", i, expected[i][0], p)
 		}

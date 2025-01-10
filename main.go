@@ -22,16 +22,27 @@ const (
 	appName = "go-dualsense-battery"
 
 	// https://controllers.fandom.com/wiki/Sony_DualSense
-	vendorID          = 0x054C
-	productId         = 0x0CE6
-	offsetBatteryUSB  = 53
-	offsetBatteryBT   = 54
-	battery0Mask      = 0x0F
-	batteryLevels     = 0x0A + 1
+	vendorID  = 0x054C
+	productId = 0x0CE6
+
+	bufferSizeBT  = 78
+	bufferSizeUSB = 64
+
+	offsetPowerUSB = 53
+	offsetPowerBT  = 54
+	maskPowerLevel = 0x0F
+	maskPowerState = 0xF0
+	maxPowerLevel  = 0x0A
+
 	btReportTruncated = 0x01
 	calibrationFR     = 0x05
-	bufferSizeBT      = 78
-	bufferSizeUSB     = 64
+
+	stateCharging            = 0x00
+	stateDischarging         = 0x01
+	stateComplete            = 0x02
+	stateAbnormalVoltage     = 0x0A
+	stateAbnormalTemperature = 0x0B
+	stateChargingError       = 0x0F
 
 	attachParentProcess = ^uint32(0) // ATTACH_PARENT_PROCESS (DWORD)-1
 )
@@ -100,24 +111,6 @@ var (
 	consoleEnabled bool
 )
 
-// https://stackoverflow.com/questions/23743217/printing-output-to-a-command-window-when-golang-application-is-compiled-with-ld
-func attachConsole() {
-	// Attach a console to the process. Allocate it if needed first.
-	r0, _, _ := pAttachConsole.Call(uintptr(attachParentProcess))
-	if r0 == 0 {
-		_, _, _ = pAllocConsole.Call()
-	}
-	// Redirect the standard streams.
-	hout, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
-	if err == nil {
-		os.Stdout = os.NewFile(uintptr(hout), "/dev/stdout")
-	}
-	herr, err := syscall.GetStdHandle(syscall.STD_ERROR_HANDLE)
-	if err == nil {
-		os.Stderr = os.NewFile(uintptr(herr), "/dev/stderr")
-	}
-}
-
 func main() {
 	flag.BoolVar(&consoleEnabled, "console", false, "Attach a debug console to the program.")
 	flag.Parse()
@@ -166,12 +159,34 @@ func onReady() {
 	proc()
 }
 
+// https://stackoverflow.com/questions/23743217/printing-output-to-a-command-window-when-golang-application-is-compiled-with-ld
+func attachConsole() {
+	// Attach a console to the process. Allocate it if needed first.
+	r0, _, _ := pAttachConsole.Call(uintptr(attachParentProcess))
+	if r0 == 0 {
+		_, _, _ = pAllocConsole.Call()
+	}
+	// Redirect the standard streams.
+	hout, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
+	if err == nil {
+		os.Stdout = os.NewFile(uintptr(hout), "/dev/stdout")
+	}
+	herr, err := syscall.GetStdHandle(syscall.STD_ERROR_HANDLE)
+	if err == nil {
+		os.Stderr = os.NewFile(uintptr(herr), "/dev/stderr")
+	}
+}
+
 func proc() {
 	for {
 		time.Sleep(1 * time.Second)
 
 		log.Println("Opening controller device...")
 
+		// Randomly throws exception: https://github.com/golang/go/issues/13672
+		// Likely doesn't matter if a different cgo wrapper is used, such as:
+		// https://github.com/deadsy/hidapi/blob/master/hidapi.go
+		// One possible solution might be to have all HID calls in the main thread.
 		d, err := hid.OpenFirst(vendorID, productId)
 		if err != nil {
 			setStatus(fmt.Sprintf("OpenFirst error: %v", err.Error()))
@@ -195,10 +210,10 @@ func proc() {
 		var sz int
 		switch info.BusType {
 		case hid.BusUSB:
-			offset = offsetBatteryUSB
+			offset = offsetPowerUSB
 			sz = bufferSizeUSB
 		case hid.BusBluetooth:
-			offset = offsetBatteryBT
+			offset = offsetPowerBT
 			sz = bufferSizeBT
 		default:
 			setStatus(fmt.Sprintf("error: unsupported BusType: %s", info.BusType))
@@ -232,7 +247,7 @@ func proc() {
 			continue
 		}
 
-		log.Printf("Received an input report with first byte: %x", b[0])
+		log.Printf("Received an input report with first byte: %#x", b[0])
 
 		// Sending a calibration report (using calibrationFR) is required to switch BT input
 		// reports from the truncated report to the expanded report.
@@ -258,11 +273,18 @@ func proc() {
 
 		// Offsets and calculation referenced from:
 		// https://controllers.fandom.com/wiki/Sony_DualSense
-		battery0 := b[offset] & battery0Mask
-		log.Printf("Read battery0 value of: %x", battery0)
+		powerLevel := b[offset] & maskPowerLevel
+		powerState := (b[offset] & maskPowerState) >> 4
+		log.Printf("Read powerLevel: %#x, powerState: %#x", powerLevel, powerState)
+		if powerState == stateComplete {
+			powerLevel = maxPowerLevel
+			log.Printf("powerLevel adjusted to %#x", powerLevel)
+		}
 
-		percent, iconIndex := battery0ToPercentAndIndex(battery0)
-		setStatus(fmt.Sprintf("Connection: %s, Battery: %d%%", info.BusType, percent))
+		percent, iconIndex := powerLevelToPercentAndIndex(powerLevel)
+		state := parsePowerState(powerState)
+		setStatus(fmt.Sprintf("Connection: %s, Power: %d%%, State: %s",
+			info.BusType, percent, state))
 
 		if info.BusType == hid.BusUSB {
 			systray.SetIcon(charging[iconIndex])
@@ -281,8 +303,8 @@ func setStatus(status string) {
 
 func toggleConsole(mi *systray.MenuItem) {
 	const (
-		consoleMenuItemTextShow = "Show debug console"
-		consoleMenuItemTextHide = "Hide debug console"
+		consoleMenuItemTextShow = "Attach debug console"
+		consoleMenuItemTextHide = "Detach debug console"
 	)
 	if consoleEnabled {
 		attachConsole()
@@ -295,13 +317,34 @@ func toggleConsole(mi *systray.MenuItem) {
 }
 
 // https://controllers.fandom.com/wiki/Sony_DualSense
-// battery0 has the range of 0 - 0x0A, so 11 values.
+// Power levels have the range of 0 - 0x0A, so 11 values.
 // Map that to percentage and icon index.
 // The 101.0 trick for nIcons avoids branching and fits the
 // 100 percents in iconIndex equal to len(icons)-1.
-func battery0ToPercentAndIndex(battery0 byte) (int, int) {
-	percent := float64(battery0) * (100.0 / (batteryLevels - 1))
+func powerLevelToPercentAndIndex(p byte) (int, int) {
+	percent := float64(p) * (100.0 / maxPowerLevel)
 	nIcons := 101.0 / float64(len(charging))
 	iconIndex := math.Floor(percent / nIcons)
 	return int(percent), int(iconIndex)
+}
+
+// https://controllers.fandom.com/wiki/Sony_DualSense
+// 4 bits for state.
+func parsePowerState(s byte) string {
+	switch s {
+	case stateDischarging:
+		return "Discharging"
+	case stateCharging:
+		return "Charging"
+	case stateComplete:
+		return "Complete"
+	case stateAbnormalVoltage:
+		return "AbnormalVoltage"
+	case stateAbnormalTemperature:
+		return "AbnormalTemperature"
+	case stateChargingError:
+		fallthrough
+	default:
+		return "ChargingError"
+	}
 }
