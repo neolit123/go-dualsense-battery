@@ -37,8 +37,8 @@ const (
 	btReportTruncated = 0x01
 	calibrationFR     = 0x05
 
-	stateCharging            = 0x00
-	stateDischarging         = 0x01
+	stateDischarging         = 0x00
+	stateCharging            = 0x01
 	stateComplete            = 0x02
 	stateAbnormalVoltage     = 0x0A
 	stateAbnormalTemperature = 0x0B
