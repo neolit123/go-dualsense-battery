@@ -31,8 +31,21 @@ from the [Releases](https://github.com/neolit123/go-dualsense-battery/releases) 
 
 ## Known issues
 
-This Go bug manifests on rare occasions:
+This Go bug manifests on rare occasions, which can result in an application exit:
 https://github.com/golang/go/issues/13672
+
+## Other notes
+
+The battery power level is stored in 4 bits of memory in the input report
+from the controller. That is a value between 0x00 and 0x0F, or 16 levels in total.
+However, the actual value is in the range between 0x00 and 0x0A, or 11 levels in total.
+That nicely makes it so that for every reported level, there is a 10% multiplier.
+This application is designed following this principle and it seems consistent, despite
+the fact that the input report value can be a bit imprecise - e.g. sometimes
+status 'Complete' is reported for level 90%.
+
+For some reason other apps and libraries divide the obtained 4 bits by 8,
+which seems less correct.
 
 ## Dependencies
 
