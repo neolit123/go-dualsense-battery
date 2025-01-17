@@ -3,7 +3,7 @@
 ## Description
 
 A small Windows taskbar application, written in Go, for showing the battery level
-of a PlayStation 5 DualSense controller connected over BlueTooth or USB.
+of a PlayStation 5 DualSense controller connected over Bluetooth or USB.
 
 Supports a single controller, the first one in the device list.
 Last tested with controller firmware A-0520 on Windows 11 Pro 64bit 10.0.26100.2605.
@@ -17,7 +17,7 @@ Last tested with controller firmware A-0520 on Windows 11 Pro 64bit 10.0.26100.2
 - Every few seconds the applications opens a DualSense controller Windows device
 and reads its status and battery level.
 - It shows different battery level icons depending if it's being connected
-over USB (charging), BlueTooth or if no devices are found.
+over USB (charging), Bluetooth or if no devices are found.
 - It consumes a couple of MB of RAM and a tiny amount of CPU cycles.
 - You can right click and `Exit` at any time.
 - You can right click and attach a debug console for more detailed output.
