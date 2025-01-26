@@ -56,6 +56,9 @@ var (
 	//go:embed assets/not_connected.ico
 	notConnected []byte
 
+	//go:embed assets/alert.ico
+	alert []byte
+
 	//go:embed assets/charging_0.ico
 	charging0 []byte
 	//go:embed assets/charging_1.ico
@@ -303,14 +306,19 @@ func proc() {
 		}
 
 		percent, iconIndex := powerLevelToPercentAndIndex(powerLevel)
-		state := parsePowerState(powerState)
+		powerStateStr := powerStateString(powerState)
 		setStatus(fmt.Sprintf("Connection: %s, Power: %d%%, State: %s",
-			info.BusType, percent, state))
+			info.BusType, percent, powerStateStr))
 
-		if info.BusType == hid.BusUSB {
-			systray.SetIcon(charging[iconIndex])
-		} else {
+		switch powerState {
+		case stateDischarging, stateComplete:
 			systray.SetIcon(notCharging[iconIndex])
+		case stateCharging:
+			systray.SetIcon(charging[iconIndex])
+		case stateAbnormalVoltage, stateAbnormalTemperature, stateChargingError:
+			fallthrough
+		default:
+			systray.SetIcon(alert)
 		}
 
 		_ = d.Close()
@@ -351,7 +359,7 @@ func powerLevelToPercentAndIndex(p byte) (int, int) {
 
 // https://controllers.fandom.com/wiki/Sony_DualSense
 // 4 bits for state.
-func parsePowerState(s byte) string {
+func powerStateString(s byte) string {
 	switch s {
 	case stateDischarging:
 		return "Discharging"
@@ -364,8 +372,8 @@ func parsePowerState(s byte) string {
 	case stateAbnormalTemperature:
 		return "AbnormalTemperature"
 	case stateChargingError:
-		fallthrough
-	default:
 		return "ChargingError"
+	default:
+		return "Unknown"
 	}
 }

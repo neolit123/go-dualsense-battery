@@ -1,7 +1,7 @@
 @echo off
 
 echo running tests...
-go test -v ./
+go test -v ./ -count=1
 
 echo enabling CGO...
 set OLD_CGO_ENABLED=%CGO_ENABLED%
@@ -12,6 +12,9 @@ echo using BUILD_VERSION %BUILD_VERSION%
 
 echo calling go-windres...
 go-winres simply --icon .\assets\charging_3.ico --manifest gui
+
+echo taskkill /im go-dualsense-battery.exe
+taskkill /im go-dualsense-battery.exe
 
 echo building...
 go build -ldflags "-s -H=windowsgui -X=main.version=%BUILD_VERSION%"
