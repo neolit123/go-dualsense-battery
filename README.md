@@ -16,11 +16,13 @@ Last tested with controller firmware A-0520 on Windows 11 Pro 64bit 10.0.26100.2
 
 - Every few seconds the applications opens a DualSense controller Windows device
 and reads its status and battery level.
-- It shows different battery level icons depending if it's being connected
-over USB (charging), Bluetooth or if no devices are found.
+- It shows different icons depending if it's charging or not, and if there is a
+charging error.
 - It consumes a couple of MB of RAM and a tiny amount of CPU cycles.
-- You can right click and `Exit` at any time.
-- You can right click and attach a debug console for more detailed output.
+- You can right click and:
+  - `Exit` at any time.
+  - attach a debug console for more detailed output.
+  - click the application name to open the GitHub project page.
 
 ## Installing
 
@@ -28,6 +30,12 @@ over USB (charging), Bluetooth or if no devices are found.
 from the [Releases](https://github.com/neolit123/go-dualsense-battery/releases) page.
 - Press `Win+R` and type `shell:startup`. This will open the `Startup` folder in Explorer.
 - Create a shortcut of the executable in this folder to start it with Windows.
+
+You can also make the icon always visible by:
+- Right click the Taskbar.
+- Select "Taskbar settings".
+- Expand "Other system tray icons".
+- Select "On" for "go-dualsense-battery".
 
 ## Known issues
 
