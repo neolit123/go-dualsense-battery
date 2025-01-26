@@ -10,6 +10,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"os/exec"
 	"syscall"
 	"time"
 
@@ -137,7 +138,12 @@ func onReady() {
 	systray.SetTitle(appName)
 
 	menuItemAppName := systray.AddMenuItem(fmt.Sprintf("%s %s", appName, version), "")
-	menuItemAppName.Disable()
+	go func() {
+		for {
+			<-menuItemAppName.ClickedCh
+			exec.Command("cmd", "/c", "start", "https://github.com/neolit123/"+appName).Start()
+		}
+	}()
 
 	systray.AddSeparator()
 
