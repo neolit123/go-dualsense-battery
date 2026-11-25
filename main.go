@@ -209,7 +209,7 @@ func attachConsole() {
 
 func proc() {
 	for {
-		time.Sleep(1 * time.Second)
+		time.Sleep(5 * time.Second)
 
 		log.Println("Opening controller device...")
 
