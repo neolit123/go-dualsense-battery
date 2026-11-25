@@ -42,6 +42,15 @@ You can also make the icon always visible by:
 This Go bug manifests on rare occasions, which can result in an application exit:
 https://github.com/golang/go/issues/13672
 
+To construct a HID report over Bluetooth the application uses the report ID `0x31`,
+this means "give me a extended report, that also includes battery levels".
+The default report ID `0x01` means "short report" and it _does not_ include battery levels.
+While this application is running, if another application only supports the short report,
+the other application might either stop working or exhibit undefined behavior. See
+[this ticket](https://github.com/neolit123/go-dualsense-battery/issues/1) for details.
+Applications like Steam do support the extended report of the DualSense,
+so this application and Steam work fine together.
+
 ## Other notes
 
 The battery power level is stored in 4 bits of memory in the input report
